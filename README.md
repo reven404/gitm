@@ -49,7 +49,7 @@ Prebuilt assets (per release):
 | Asset | Host |
 |---|---|
 | `gitm-aarch64-darwin.tar.gz` | Apple silicon (macOS) |
-| `gitm-x86_64-darwin.tar.gz` | Intel (macOS) |
+| `gitm-x86_64-darwin.tar.gz` | Intel (macOS) — runner supply is scarce; if absent, use `cargo install --git https://github.com/reven404/gitm` |
 | `gitm-aarch64-linux.tar.gz` | arm64 (Linux, e.g. Graviton/Raspberry Pi) |
 | `gitm-x86_64-linux.tar.gz` | x86_64 (Linux) |
 

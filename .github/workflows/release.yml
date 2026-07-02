@@ -20,9 +20,10 @@ jobs:
           - os: macos-14        # apple silicon
             arch: aarch64
             os_mark: darwin
-          - os: macos-13        # intel
+          - os: macos-13        # intel (runner supply is scarce; timeout guards against indefinite queue)
             arch: x86_64
             os_mark: darwin
+            timeout: 30
           - os: ubuntu-22.04
             arch: x86_64
             os_mark: linux
@@ -30,6 +31,7 @@ jobs:
             arch: aarch64
             os_mark: linux
     runs-on: ${{ matrix.os }}
+    timeout-minutes: ${{ matrix.timeout || 15 }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
