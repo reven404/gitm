@@ -61,10 +61,18 @@ jobs:
       - name: Package
         run: |
           tar czf "$ASSET" -C target/${{ matrix.target }}/release gitm
+      - name: Ensure release exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Idempotent: create the release if missing (no assets yet). A race
+          # across parallel jobs is fine — only the winner creates it; losers
+          # see "already exists" and continue. Assets are uploaded next, each
+          # with a unique name, so --clobber never deletes a sibling asset.
+          gh release create "$GITHUB_REF_NAME" --generate-notes --title "$GITHUB_REF_NAME" \
+            || true
       - name: Upload asset
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Create the release on first job, otherwise just upload (clobber).
-          gh release create "$GITHUB_REF_NAME" "$ASSET" --generate-notes \
-            || gh release upload "$GITHUB_REF_NAME" "$ASSET" --clobber
+          gh release upload "$GITHUB_REF_NAME" "$ASSET" --clobber
