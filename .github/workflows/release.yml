@@ -4,9 +4,12 @@ name: release
 # them to the GitHub Release created on tag push. `gitm update` downloads the
 # asset matching the current host's ARCH/OS markers.
 #
-# The Intel macOS (x86_64-darwin) asset is cross-compiled on an Apple-silicon
-# runner (macos-14) to avoid the scarce macos-13 Intel runner pool. gitm's deps
-# are all pure Rust, so no C cross-toolchain is needed.
+# Intel macOS (x86_64-darwin) is cross-compiled on an Apple-silicon runner
+# (macos-14) to avoid the scarce macos-13 Intel runner pool. gitm's deps are
+# all pure Rust, so no C cross-toolchain is needed.
+#
+# Guard: the tag (minus leading "v") must equal the version in Cargo.toml,
+# so a released binary's built-in version always matches its release tag.
 
 on:
   push:
@@ -39,8 +42,17 @@ jobs:
             target: aarch64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
+    env:
+      ASSET: gitm-${{ matrix.arch }}-${{ matrix.os_mark }}.tar.gz
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - name: Verify tag matches Cargo.toml version
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME#v}"
+          CARGO_VER=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "tag=$TAG cargo=$CARGO_VER"
+          [ "$TAG" = "$CARGO_VER" ] || { echo "ERROR: tag v$TAG != Cargo.toml $CARGO_VER"; exit 1; }
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -48,10 +60,11 @@ jobs:
         run: cargo build --release --locked --target ${{ matrix.target }}
       - name: Package
         run: |
-          tar czf gitm-${{ matrix.arch }}-${{ matrix.os_mark }}.tar.gz \
-            -C target/${{ matrix.target }}/release gitm
+          tar czf "$ASSET" -C target/${{ matrix.target }}/release gitm
       - name: Upload asset
-        uses: softprops/action-gh-release@v2
-        with:
-          files: gitm-${{ matrix.arch }}-${{ matrix.os_mark }}.tar.gz
-          generate_release_notes: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Create the release on first job, otherwise just upload (clobber).
+          gh release create "$GITHUB_REF_NAME" "$ASSET" --generate-notes \
+            || gh release upload "$GITHUB_REF_NAME" "$ASSET" --clobber
