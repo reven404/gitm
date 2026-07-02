@@ -122,14 +122,22 @@ Global flags (placed **before** the subcommand): `--no-ai`, `--ai <backend>`, `-
 
 ### `x` semantics
 
-Everything after `--` is joined into one string and run via `sh -c` in each project dir, so shell features work:
+Simple commands need **no quotes** — gitm execs the program directly:
 
 ```bash
-gitm x -j 4 -- 'go test ./... && go build'
+gitm x -j 4 -- go build ./...
+gitm x -t backend -- npm run test
+gitm x -- git status -sb
+```
+
+If any argument contains shell control chars (`&&`, `|`, `;`, `$`, globs, `>`, ...), gitm runs it through `sh -c` instead — so quote the whole script to keep it as one argument:
+
+```bash
+gitm x -- 'make test && make build'
 gitm x -- 'echo $(basename "$PWD")'
 ```
 
-Do **not** wrap it as `gitm x -- sh -c '...'` (that nests a second shell and loses the script). Pass the script string directly after `--`.
+The `--` separator is required so gitm doesn't confuse your command's flags with its own.
 
 ---
 

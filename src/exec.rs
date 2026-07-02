@@ -48,14 +48,20 @@ pub fn run(
     cmd: &[String],
 ) -> Result<i32> {
     let targets = filter(cfg, project, tag)?;
-    let cmd_str = cmd.join(" ");
-    if cmd_str.trim().is_empty() {
+    if cmd.is_empty() || cmd.iter().all(|c| c.trim().is_empty()) {
         return Err(anyhow!("no command given; usage: gitm x -- <CMD...>"));
     }
+    let cmd_str = cmd.join(" ");
+    let use_shell = needs_shell(cmd);
 
     if dry_run {
         for p in &targets {
-            println!("[{}] $ {} @ {}", p.name, cmd_str, root.join(&p.path).display());
+            println!(
+                "[{}] $ {} @ {}",
+                p.name,
+                cmd_str,
+                root.join(&p.path).display()
+            );
         }
         return Ok(0);
     }
@@ -67,7 +73,7 @@ pub fn run(
     let results: Vec<i32> = pool.install(|| {
         targets
             .par_iter()
-            .map(|p| run_one(root, p, &cmd_str, fail_fast, &any_fail, &stdout_lock))
+            .map(|p| run_one(root, p, cmd, use_shell, fail_fast, &any_fail, &stdout_lock))
             .collect()
     });
 
@@ -75,10 +81,21 @@ pub fn run(
     Ok(if failed { 1 } else { 0 })
 }
 
+/// If any argument contains a shell control char, the user almost certainly
+/// quoted it to preserve shell semantics (`&&`, pipes, `$`, globs...) → run
+/// via `sh -c`. Otherwise exec the program directly — no shell, no quoting.
+fn needs_shell(cmd: &[String]) -> bool {
+    cmd.iter().any(|a| {
+        a.chars()
+            .any(|c| matches!(c, '&' | '|' | ';' | '$' | '<' | '>' | '*' | '?' | '(' | ')' | '`' | '{' | '}' | '~' | '\\'))
+    })
+}
+
 fn run_one(
     root: &std::path::Path,
     p: &Project,
-    cmd: &str,
+    cmd: &[String],
+    use_shell: bool,
     fail_fast: bool,
     any_fail: &Arc<AtomicBool>,
     stdout_lock: &Arc<Mutex<std::io::Stdout>>,
@@ -88,14 +105,20 @@ fn run_one(
         return -1;
     }
     let path = root.join(&p.path);
-    let mut child = match Command::new("sh")
-        .arg("-c")
-        .arg(cmd)
-        .current_dir(&path)
+    let mut prog = if use_shell {
+        let joined = cmd.join(" ");
+        let mut c = Command::new("sh");
+        c.arg("-c").arg(&joined);
+        c
+    } else {
+        let mut c = Command::new(&cmd[0]);
+        c.args(&cmd[1..]);
+        c
+    };
+    prog.current_dir(&path)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-    {
+        .stderr(Stdio::piped());
+    let mut child = match prog.spawn() {
         Ok(c) => c,
         Err(e) => {
             let mut o = stdout_lock.lock().unwrap();
