@@ -14,6 +14,7 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: macos-14        # apple silicon
@@ -24,6 +25,9 @@ jobs:
             os_mark: darwin
           - os: ubuntu-22.04
             arch: x86_64
+            os_mark: linux
+          - os: ubuntu-24.04-arm   # native arm64 linux runner
+            arch: aarch64
             os_mark: linux
     runs-on: ${{ matrix.os }}
     steps:

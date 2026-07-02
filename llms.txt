@@ -28,10 +28,9 @@ Global flags (BEFORE the subcommand): `--no-ai`, `--ai <claude|opencode|codex|no
 |---|---|---|
 | `init` | `[DIR] [--ai <b>] [--no-scan]` | Create/adopt DIR, `git init`, write `CLAUDE.md`, detect AI backend, **scan DIR for existing git sub-repos and register them**. Refuses only if `gitm.toml` already exists. |
 | `add` | `<SRC> [NAME] [--tag <T>]...` | SRC is a git URL (`http(s)://`,`git@`,`ssh://`,`git://`, or `*.git`) → `git clone`; else local path → `git worktree add --detach` then `checkout -B <branch>`. NAME defaults to URL tail / path basename. Writes toml + AI row. |
-| `ls` | `[--format table\|json] [--tag <T>] [--watch [SECS]]` | Per-project status: branch, dirty, ahead/behind upstream. `json` = structured array. `--watch` polls (default 2s; table only). |
+| `ls` | `[--format table\|json] [--tag <T>]` | Per-project status: branch, dirty, ahead/behind upstream. `json` = structured array. |
 | `x` | `[-p NAME] [-t <T>] [-j N] [--fail-fast] [--dry-run] -- <CMD...>` | Run `<CMD>` across matched projects in parallel via `sh -c` in each project dir. `-p`/`-t` mutually exclusive. `-j 0` = num cpus. `--dry-run` prints `[name] $ CMD @ path` only. |
 | `sync` | `[-j N]` | `git fetch --prune` + `git pull --ff-only` per project; skips dirty repos with a warning. |
-| `pr` | `<create\|list\|view> [-p NAME] [-t <T>]` | Delegates to `gh` (github remotes) or `glab` (gitlab remotes) per project. Not a fleet PR lifecycle. |
 | `rm` | `<NAME> [--force]` | Unregister. worktree→`git worktree remove`; cloned→delete dir only with `--force`; local→directory kept. Also removes the CLAUDE.md row. |
 | `ai` | `[NAME] [--refresh]` | Re-run AI analysis; rewrite CLAUDE.md row(s). Without NAME, refresh all. |
 | `version` | — | Print version / target / repo / detected AI backends. |
@@ -96,7 +95,6 @@ tags = ["backend"]
 
 - `0` success. `x` returns `1` if any project command failed (unless `--fail-fast`).
 - `sync` returns `1` if any project failed (e.g. dirty / diverged).
-- `pr` returns `1` if any repo's `gh`/`glab` invocation failed.
 - Other commands return non-zero on error with a human-readable `error: ...` line on stderr.
 
 ## Gotchas an AI should know

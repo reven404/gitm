@@ -3,7 +3,6 @@ mod cli;
 mod config;
 mod exec;
 mod gitops;
-mod pr;
 mod scan;
 mod status;
 mod update;
@@ -13,9 +12,7 @@ use clap::Parser;
 use cli::{Cli, Cmd};
 use config::{basename, find_root, Config, Project};
 use rayon::prelude::*;
-use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
 
 const TEMPLATE_CLAUDE_MD: &str = include_str!("../templates/CLAUDE.md");
 
@@ -40,7 +37,7 @@ fn run(cli: Cli) -> Result<()> {
     match &cli.cmd {
         Cmd::Init { dir, ai, no_scan } => cmd_init(dir.clone(), ai.clone(), *no_scan, &cli),
         Cmd::Add { source, name, tags } => cmd_add(source, name.clone(), tags.clone(), &cli),
-        Cmd::Ls { format, tag, watch } => cmd_ls(format, tag, watch, &cli),
+        Cmd::Ls { format, tag } => cmd_ls(format, tag, &cli),
         Cmd::X {
             project,
             tag,
@@ -50,11 +47,6 @@ fn run(cli: Cli) -> Result<()> {
             cmd,
         } => cmd_x(project, tag, *jobs, *fail_fast, *dry_run, cmd, &cli),
         Cmd::Sync { jobs } => cmd_sync(*jobs, &cli),
-        Cmd::Pr {
-            action,
-            project,
-            tag,
-        } => cmd_pr(action, project, tag, &cli),
         Cmd::Rm { name, force } => cmd_rm(name, *force, &cli),
         Cmd::Ai { name, refresh } => cmd_ai(name, *refresh, &cli),
         Cmd::Update { check } => cmd_update(*check),
@@ -203,7 +195,7 @@ fn cmd_add(source: &str, name: Option<String>, tags: Vec<String>, cli: &Cli) -> 
     Ok(())
 }
 
-fn cmd_ls(format: &str, tag: &Option<String>, watch: &Option<u64>, cli: &Cli) -> Result<()> {
+fn cmd_ls(format: &str, tag: &Option<String>, cli: &Cli) -> Result<()> {
     let _ = cli;
     let root = find_root()?;
     let cfg = Config::load(&root)?;
@@ -212,9 +204,6 @@ fn cmd_ls(format: &str, tag: &Option<String>, watch: &Option<u64>, cli: &Cli) ->
         None => cfg.project.iter().collect(),
     };
     if format == "json" {
-        if watch.is_some() {
-            return Err(anyhow!("--watch is incompatible with --format json"));
-        }
         let rows: Vec<_> = projs
             .iter()
             .map(|p| {
@@ -244,29 +233,19 @@ fn cmd_ls(format: &str, tag: &Option<String>, watch: &Option<u64>, cli: &Cli) ->
         return Err(anyhow!("unknown format: {} (table|json)", format));
     }
 
-    let secs = watch.unwrap_or(0);
-    loop {
-        let statuses = status::compute_all(&root, &projs);
-        if secs > 0 {
-            print!("\x1b[2J\x1b[H");
-        }
+    let statuses = status::compute_all(&root, &projs);
+    println!(
+        "{:<24} {:<10} {:<20} {:<16} {}",
+        "NAME", "TYPE", "BRANCH", "STATUS", "PATH"
+    );
+    println!("{}", "-".repeat(90));
+    for (p, s) in projs.iter().zip(statuses.iter()) {
         println!(
             "{:<24} {:<10} {:<20} {:<16} {}",
-            "NAME", "TYPE", "BRANCH", "STATUS", "PATH"
+            p.name, p.kind, s.branch, s.cell(), p.path
         );
-        println!("{}", "-".repeat(90));
-        for (p, s) in projs.iter().zip(statuses.iter()) {
-            println!(
-                "{:<24} {:<10} {:<20} {:<16} {}",
-                p.name, p.kind, s.branch, s.cell(), p.path
-            );
-        }
-        let _ = std::io::stdout().flush();
-        if secs == 0 {
-            return Ok(());
-        }
-        std::thread::sleep(Duration::from_secs(secs));
     }
+    Ok(())
 }
 
 fn cmd_x(
@@ -308,17 +287,6 @@ fn cmd_sync(jobs: usize, cli: &Cli) -> Result<()> {
     });
     if fail.load(std::sync::atomic::Ordering::SeqCst) {
         std::process::exit(1);
-    }
-    Ok(())
-}
-
-fn cmd_pr(action: &str, project: &Option<String>, tag: &Option<String>, cli: &Cli) -> Result<()> {
-    let _ = cli;
-    let root = find_root()?;
-    let cfg = Config::load(&root)?;
-    let rc = pr::run(&root, &cfg, action, project, tag)?;
-    if rc != 0 {
-        std::process::exit(rc);
     }
     Ok(())
 }

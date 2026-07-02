@@ -16,7 +16,7 @@
 
 ### Prebuilt binary (recommended)
 
-A one-liner that auto-detects your arch/OS and installs the latest release to `/usr/local/bin`:
+A one-liner that auto-detects your arch/OS and installs the latest release:
 
 ```bash
 ARCH=$(uname -m | sed 's/arm64/aarch64/')        # aarch64 | x86_64
@@ -26,13 +26,22 @@ curl -fsSL "https://github.com/reven404/gitm/releases/latest/download/gitm-${ARC
 gitm version
 ```
 
-No `sudo`? Install to a user dir instead:
+No `sudo` / no write access to `/usr/local/bin`? Install to a user dir:
 
 ```bash
-mkdir -p ~/.local/bin && curl -fsSL \
-  "https://github.com/reven404/gitm/releases/latest/download/gitm-${ARCH}-${OS}.tar.gz" \
+mkdir -p ~/.local/bin
+curl -fsSL "https://github.com/reven404/gitm/releases/latest/download/gitm-${ARCH}-${OS}.tar.gz" \
   | tar xz -C ~/.local/bin gitm
-# ensure ~/.local/bin is on your PATH
+export PATH="$HOME/.local/bin:$PATH"   # add to ~/.zshrc / ~/.bashrc to persist
+gitm version
+```
+
+Verify the download with the SHA-256 digest published on the [release page](https://github.com/reven404/gitm/releases/latest):
+
+```bash
+curl -fsSL "https://github.com/reven404/gitm/releases/latest/download/gitm-${ARCH}-${OS}.tar.gz" -o gitm.tgz
+shasum -a 256 gitm.tgz   # compare with the digest shown on the release page
+tar xzf gitm.tgz -C /usr/local/bin gitm
 ```
 
 Prebuilt assets (per release):
@@ -41,7 +50,8 @@ Prebuilt assets (per release):
 |---|---|
 | `gitm-aarch64-darwin.tar.gz` | Apple silicon (macOS) |
 | `gitm-x86_64-darwin.tar.gz` | Intel (macOS) |
-| `gitm-x86_64-linux.tar.gz` | x86_64 Linux |
+| `gitm-aarch64-linux.tar.gz` | arm64 (Linux, e.g. Graviton/Raspberry Pi) |
+| `gitm-x86_64-linux.tar.gz` | x86_64 (Linux) |
 
 ### cargo (from git)
 
@@ -82,7 +92,6 @@ gitm x -j 4 -- 'make test'                              # run across all project
 gitm x -t backend -- 'go build ./...'                   # filter by tag
 gitm x --dry-run -- 'make test'                         # preview
 gitm sync                                               # fetch + ff-only pull, skip dirty
-gitm pr create                                          # delegate to gh/glab per repo
 gitm rm service                                         # unregister (+ worktree remove)
 ```
 
@@ -100,10 +109,9 @@ The root `CLAUDE.md` gets a **Subproject Catalog** row per project, filled by th
 |---|---|
 | `gitm init [DIR] [--ai <b>] [--no-scan]` | Init workspace, `git init`, write `CLAUDE.md`, detect AI backend, scan existing git sub-repos. |
 | `gitm add <SRC> [NAME] [--tag <T>]...` | `git clone` (URL) or `git worktree add` (local path); branch = workspace name; writes toml + AI row. |
-| `gitm ls [--format table\|json] [--tag <T>] [--watch [S]]` | Live status per project. `--watch` polls (default 2s). |
+| `gitm ls [--format table\|json] [--tag <T>]` | Live status per project. |
 | `gitm x [-p NAME] [-t <T>] [-j N] [--fail-fast] [--dry-run] -- <CMD>` | Run a shell command across projects in parallel. `--` separates. |
 | `gitm sync [-j N]` | `git fetch --prune` + `git pull --ff-only`; skips dirty repos. |
-| `gitm pr <create\|list\|view> [-p NAME] [-t <T>]` | Delegate to `gh`/`glab` based on each repo's remote host. |
 | `gitm rm <NAME> [--force]` | Unregister; worktree-removes worktrees, deletes cloned with `--force`, keeps local. |
 | `gitm ai [NAME] [--refresh]` | Re-run AI analysis, rewrite `CLAUDE.md` rows. |
 | `gitm version` | Print version / target / repo / detected AI backends. |

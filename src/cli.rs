@@ -75,9 +75,6 @@ pub enum Cmd {
         /// Filter by tag.
         #[arg(short = 't', long, value_name = "TAG")]
         tag: Option<String>,
-        /// Poll and refresh. Optional seconds (default 2).
-        #[arg(long, num_args = 0..=1, default_missing_value = "2")]
-        watch: Option<u64>,
     },
 
     /// Run a command across projects (parallel).
@@ -106,15 +103,6 @@ pub enum Cmd {
     Sync {
         #[arg(short = 'j', long, default_value = "0")]
         jobs: usize,
-    },
-
-    /// PR operations via gh/glab.
-    Pr {
-        action: String, // create | list | view
-        #[arg(short = 'p', long)]
-        project: Option<String>,
-        #[arg(short = 't', long)]
-        tag: Option<String>,
     },
 
     /// Remove a project.
