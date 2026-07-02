@@ -1,0 +1,115 @@
+# gitm — AI reference
+
+> AI-aware multi-repo workspace orchestrator (Rust). Manages a set of git repos under one
+> workspace root via a TOML registry (NOT git submodules), runs commands across them in
+> parallel, and auto-maintains a `CLAUDE.md` subproject catalog using an AI backend.
+
+## Mental model
+
+- A **workspace** = a directory with a `gitm.toml` + `CLAUDE.md` + per-project subdirs.
+- `find_root()` walks up from cwd to find `gitm.toml`; every command works from any subdir.
+- The workspace dir's **basename is the default branch** applied to every sub-project
+  (override per-project with `[[project]].branch`).
+- Projects are added either as a **clone** (git URL) or a **worktree** (local path). They are
+  ordinary repos, not submodules — no detached-HEAD/sync pain.
+- The AI backend (claude/opencode/codex) is invoked on `add` to read the project's manifest
+  files and append a `| name | stack | role |` row to the root `CLAUDE.md` Subproject Catalog.
+
+## Commands
+
+```
+gitm [global flags] <command> [args] [-- passthrough]
+```
+
+Global flags (BEFORE the subcommand): `--no-ai`, `--ai <claude|opencode|codex|none>`,
+`--no-check` (skip startup version check), `-v`.
+
+| Command | Args | What it does |
+|---|---|---|
+| `init` | `[DIR] [--ai <b>] [--no-scan]` | Create/adopt DIR, `git init`, write `CLAUDE.md`, detect AI backend, **scan DIR for existing git sub-repos and register them**. Refuses only if `gitm.toml` already exists. |
+| `add` | `<SRC> [NAME] [--tag <T>]...` | SRC is a git URL (`http(s)://`,`git@`,`ssh://`,`git://`, or `*.git`) → `git clone`; else local path → `git worktree add --detach` then `checkout -B <branch>`. NAME defaults to URL tail / path basename. Writes toml + AI row. |
+| `ls` | `[--format table\|json] [--tag <T>] [--watch [SECS]]` | Per-project status: branch, dirty, ahead/behind upstream. `json` = structured array. `--watch` polls (default 2s; table only). |
+| `x` | `[-p NAME] [-t <T>] [-j N] [--fail-fast] [--dry-run] -- <CMD...>` | Run `<CMD>` across matched projects in parallel via `sh -c` in each project dir. `-p`/`-t` mutually exclusive. `-j 0` = num cpus. `--dry-run` prints `[name] $ CMD @ path` only. |
+| `sync` | `[-j N]` | `git fetch --prune` + `git pull --ff-only` per project; skips dirty repos with a warning. |
+| `pr` | `<create\|list\|view> [-p NAME] [-t <T>]` | Delegates to `gh` (github remotes) or `glab` (gitlab remotes) per project. Not a fleet PR lifecycle. |
+| `rm` | `<NAME> [--force]` | Unregister. worktree→`git worktree remove`; cloned→delete dir only with `--force`; local→directory kept. Also removes the CLAUDE.md row. |
+| `ai` | `[NAME] [--refresh]` | Re-run AI analysis; rewrite CLAUDE.md row(s). Without NAME, refresh all. |
+| `version` | — | Print version / target / repo / detected AI backends. |
+| `update` | `[--check]` | Check GitHub for a newer release; without `--check`, download+extract+replace the running binary. |
+| `docs` | — | Print this reference. |
+
+## `x` semantics (IMPORTANT)
+
+Everything after `--` is **joined with spaces and run as `sh -c "<joined>"`** in each project
+dir. Shell features work:
+
+```bash
+gitm x -j 4 -- 'go test ./... && go build'
+gitm x -- 'echo $(basename "$PWD")'
+```
+
+Do NOT write `gitm x -- sh -c 'script'` — that nests a second shell and the script is lost.
+Pass the script string directly after `--`. To target one project or a tag: `-p NAME` / `-t TAG`.
+
+## Status cell (`ls` table)
+
+`✔` clean & in sync · `✱dirty` uncommitted changes · `↑N` ahead · `↓N` behind · `∅no-upstream` no tracking branch.
+
+## `gitm.toml`
+
+```toml
+[workspace]
+branch = "myws"                 # = init dir basename; default branch for all projects
+
+[ai]
+backend = "claude"              # claude | opencode | codex | none
+
+[[project]]
+name = "service"
+source = "git@github.com:org/service.git"
+type = "cloned"                 # cloned | worktree | local
+path = "service"
+branch = "myws"                 # optional per-project override
+tags = ["backend"]
+```
+
+## AI backend behavior
+
+- Invoked non-interactively with cwd = the project dir (so it can read package.json / go.mod /
+  Cargo.toml / pom.xml / pyproject.toml / requirements.txt / ...).
+  - claude → `claude -p "<prompt>"`
+  - opencode → `opencode run "<prompt>"`
+  - codex → `codex exec "<prompt>"`
+- Prompt forces EXACTLY one Markdown table row `| <name> | <stack> | <role> |`, no prose.
+- Best-effort: on any failure (backend missing, non-zero exit, no manifest), a placeholder
+  `| <name> | (pending) | |` row is written. Fill later with `gitm ai --refresh <name>`.
+- `--no-ai` OR `[ai].backend = "none"` → only placeholders, no network/model call.
+
+## Non-interactive guarantees (for CI / agents)
+
+- `init` with `--ai <backend>` skips the backend-selection prompt.
+- Non-TTY stdin → no prompt, first detected backend is chosen.
+- `--no-check` skips the startup GitHub version check (no network).
+- `ls --format json` is stable structured output; empty workspace returns `[]`.
+
+## Exit codes
+
+- `0` success. `x` returns `1` if any project command failed (unless `--fail-fast`).
+- `sync` returns `1` if any project failed (e.g. dirty / diverged).
+- `pr` returns `1` if any repo's `gh`/`glab` invocation failed.
+- Other commands return non-zero on error with a human-readable `error: ...` line on stderr.
+
+## Gotchas an AI should know
+
+1. `add` of a local path that is **not a git repo** fails (`rev-parse --git-dir`).
+2. `add` of a git repo with **no commits** (unborn HEAD) fails worktree creation; commit first.
+3. `init` into a non-empty dir is allowed (it adopts existing git sub-repos) — only an existing
+   `gitm.toml` blocks re-init.
+4. `rm` of a `cloned` project keeps the directory unless `--force` is given.
+5. The workspace's own branch name may contain characters unusual as a branch (e.g. `my-ws`);
+   `add` still creates it via `checkout -B`.
+
+## Scope (non-goals)
+
+No manifest version pinning (→ `repo`), no fleet PR merge/close lifecycle (→ `multi-gitter`),
+no recursive/nested workspaces, no Windows (`sh -c`).

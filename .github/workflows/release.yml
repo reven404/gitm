@@ -1,0 +1,43 @@
+name: release
+
+# Builds `gitm-<arch>-<os>.tar.gz` release assets for each target and attaches
+# them to the GitHub Release created on tag push. `gitm update` downloads the
+# asset matching the current host's ARCH/OS markers.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-14        # apple silicon
+            arch: aarch64
+            os_mark: darwin
+          - os: macos-13        # intel
+            arch: x86_64
+            os_mark: darwin
+          - os: ubuntu-22.04
+            arch: x86_64
+            os_mark: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build release
+        run: cargo build --release --locked
+      - name: Package
+        run: |
+          cd target/release
+          tar czf gitm-${{ matrix.arch }}-${{ matrix.os_mark }}.tar.gz gitm
+          mv gitm-${{ matrix.arch }}-${{ matrix.os_mark }}.tar.gz ../../
+      - name: Upload asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: gitm-${{ matrix.arch }}-${{ matrix.os_mark }}.tar.gz
+          generate_release_notes: true
