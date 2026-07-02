@@ -3,6 +3,10 @@ name: release
 # Builds `gitm-<arch>-<os>.tar.gz` release assets for each target and attaches
 # them to the GitHub Release created on tag push. `gitm update` downloads the
 # asset matching the current host's ARCH/OS markers.
+#
+# The Intel macOS (x86_64-darwin) asset is cross-compiled on an Apple-silicon
+# runner (macos-14) to avoid the scarce macos-13 Intel runner pool. gitm's deps
+# are all pure Rust, so no C cross-toolchain is needed.
 
 on:
   push:
@@ -17,31 +21,35 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14        # apple silicon
+          - os: macos-14
             arch: aarch64
             os_mark: darwin
-          - os: macos-13        # intel (runner supply is scarce; timeout guards against indefinite queue)
+            target: aarch64-apple-darwin
+          - os: macos-14
             arch: x86_64
             os_mark: darwin
-            timeout: 30
+            target: x86_64-apple-darwin
           - os: ubuntu-22.04
             arch: x86_64
             os_mark: linux
-          - os: ubuntu-24.04-arm   # native arm64 linux runner
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
             arch: aarch64
             os_mark: linux
+            target: aarch64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
-    timeout-minutes: ${{ matrix.timeout || 15 }}
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
       - name: Build release
-        run: cargo build --release --locked
+        run: cargo build --release --locked --target ${{ matrix.target }}
       - name: Package
         run: |
-          cd target/release
-          tar czf gitm-${{ matrix.arch }}-${{ matrix.os_mark }}.tar.gz gitm
-          mv gitm-${{ matrix.arch }}-${{ matrix.os_mark }}.tar.gz ../../
+          tar czf gitm-${{ matrix.arch }}-${{ matrix.os_mark }}.tar.gz \
+            -C target/${{ matrix.target }}/release gitm
       - name: Upload asset
         uses: softprops/action-gh-release@v2
         with:
