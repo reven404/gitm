@@ -1,55 +1,104 @@
 # gitm
 
-AI-aware multi-repo workspace orchestrator. Groups several git projects under one "workspace root", runs commands across them in parallel, and auto-maintains a `CLAUDE.md` subproject catalog using an AI backend (claude / opencode / codex).
+> One workspace, many repos, one AI-maintained `CLAUDE.md`.
 
-Single static Rust binary. No Node/Python runtime. Git submodules are **not** used — projects are independent clones/worktrees tracked by a TOML registry.
+`gitm` is an AI-aware multi-repo workspace orchestrator written in Rust. It groups several git projects under one workspace root, runs commands across them in parallel, syncs and opens PRs via `gh`/`glab`, and uses an AI backend (**claude / opencode / codex**) to auto-maintain a `CLAUDE.md` subproject catalog — so a multi-repo workspace becomes a ready-to-use context for AI coding agents.
+
+- **Single static binary.** No Node/Python runtime, no git submodules — projects are independent clones/worktrees tracked by a TOML registry.
+- **Parallel by default.** `gitm x -j N -- <cmd>` runs a shell command across all repos in parallel.
+- **AI-maintained docs.** On `add`, an AI backend reads each project's manifest and appends a `| name | stack | role |` row to `CLAUDE.md`.
+- **Self-updating.** Checks GitHub for new releases (throttled) and `gitm update` replaces the binary in place.
+- **AI-friendly.** `gitm docs` prints a token-efficient reference (`llms.txt`); `ls --format json` and friends give machine-readable output.
+
+---
 
 ## Install
 
-```bash
-# from source
-cargo install --path .
+### Prebuilt binary (recommended)
 
-# or build and symlink
+A one-liner that auto-detects your arch/OS and installs the latest release to `/usr/local/bin`:
+
+```bash
+ARCH=$(uname -m | sed 's/arm64/aarch64/')        # aarch64 | x86_64
+OS=$(uname -s | tr '[:upper:]' '[:lower:]')      # darwin  | linux
+curl -fsSL "https://github.com/reven404/gitm/releases/latest/download/gitm-${ARCH}-${OS}.tar.gz" \
+  | sudo tar xz -C /usr/local/bin gitm
+gitm version
+```
+
+No `sudo`? Install to a user dir instead:
+
+```bash
+mkdir -p ~/.local/bin && curl -fsSL \
+  "https://github.com/reven404/gitm/releases/latest/download/gitm-${ARCH}-${OS}.tar.gz" \
+  | tar xz -C ~/.local/bin gitm
+# ensure ~/.local/bin is on your PATH
+```
+
+Prebuilt assets (per release):
+
+| Asset | Host |
+|---|---|
+| `gitm-aarch64-darwin.tar.gz` | Apple silicon (macOS) |
+| `gitm-x86_64-darwin.tar.gz` | Intel (macOS) |
+| `gitm-x86_64-linux.tar.gz` | x86_64 Linux |
+
+### cargo (from git)
+
+```bash
+cargo install --git https://github.com/reven404/gitm --locked
+```
+
+### From source
+
+```bash
+git clone https://github.com/reven404/gitm
+cd gitm
 cargo build --release
-ln -s "$PWD/target/release/gitm" ~/.local/bin/gitm
+# binary: target/release/gitm
 ```
 
-Prebuilt binaries are published as GitHub Release assets (see [Update](#update) below):
+### Upgrade
+
+Once installed, `gitm` self-updates from the same GitHub releases:
 
 ```bash
-# once a release exists:
-curl -fsSL https://github.com/reven404/gitm/releases/latest/download/... | tar xz
+gitm update --check   # show current vs latest
+gitm update           # download + extract + replace the running binary
 ```
+
+---
 
 ## Quick start
 
 ```bash
-gitm init myws            # create workspace, detect AI backend, scan existing sub-repos
+gitm init myws                                    # create workspace, detect AI backend, scan sub-repos
 cd myws
-gitm add git@github.com:org/service.git      # clone (branch = workspace name "myws")
-gitm add ../local-repo --tag backend          # worktree of a local repo
-gitm ls                                      # live status: branch / dirty / ahead / behind
+gitm add git@github.com:org/service.git --tag backend   # clone (branch = "myws")
+gitm add ../local-repo --tag frontend                   # worktree of a local repo
+gitm ls                                                 # live status: branch / dirty / ahead / behind
 gitm ls --format json
-gitm x -j 4 -- 'make test'                   # run across all projects in parallel
-gitm x -t backend -- 'go build ./...'        # filter by tag
-gitm x --dry-run -- 'make test'              # preview
-gitm sync                                    # fetch + ff-only pull, skip dirty
-gitm pr create                               # delegate to gh/glab per repo
-gitm rm service                              # unregister (+ worktree remove)
+gitm x -j 4 -- 'make test'                              # run across all projects in parallel
+gitm x -t backend -- 'go build ./...'                   # filter by tag
+gitm x --dry-run -- 'make test'                         # preview
+gitm sync                                               # fetch + ff-only pull, skip dirty
+gitm pr create                                          # delegate to gh/glab per repo
+gitm rm service                                         # unregister (+ worktree remove)
 ```
 
-The root `CLAUDE.md` gets a **Subproject Catalog** table row per project, filled by the AI backend:
+The root `CLAUDE.md` gets a **Subproject Catalog** row per project, filled by the AI backend:
 
 ```
 | service | Node 18 + Egg.js | 表单后端服务 |
 ```
 
+---
+
 ## Commands
 
 | Command | Description |
 |---|---|
-| `gitm init [DIR] [--ai <b>] [--no-scan]` | Init workspace, git init, write `CLAUDE.md`, detect AI backend, scan existing git sub-repos. |
+| `gitm init [DIR] [--ai <b>] [--no-scan]` | Init workspace, `git init`, write `CLAUDE.md`, detect AI backend, scan existing git sub-repos. |
 | `gitm add <SRC> [NAME] [--tag <T>]...` | `git clone` (URL) or `git worktree add` (local path); branch = workspace name; writes toml + AI row. |
 | `gitm ls [--format table\|json] [--tag <T>] [--watch [S]]` | Live status per project. `--watch` polls (default 2s). |
 | `gitm x [-p NAME] [-t <T>] [-j N] [--fail-fast] [--dry-run] -- <CMD>` | Run a shell command across projects in parallel. `--` separates. |
@@ -61,7 +110,7 @@ The root `CLAUDE.md` gets a **Subproject Catalog** table row per project, filled
 | `gitm update [--check]` | Check GitHub for a newer release; download + self-replace. |
 | `gitm docs` | Print the AI-friendly reference (same as `llms.txt`). |
 
-Global flags (placed before the subcommand): `--no-ai`, `--ai <backend>`, `--no-check`, `-v`.
+Global flags (placed **before** the subcommand): `--no-ai`, `--ai <backend>`, `--no-check`, `-v`.
 
 ### `x` semantics
 
@@ -72,7 +121,9 @@ gitm x -j 4 -- 'go test ./... && go build'
 gitm x -- 'echo $(basename "$PWD")'
 ```
 
-Do **not** wrap it as `gitm x -- sh -c '...'` (that nests shells). Pass the script string directly.
+Do **not** wrap it as `gitm x -- sh -c '...'` (that nests a second shell and loses the script). Pass the script string directly after `--`.
+
+---
 
 ## Configuration: `gitm.toml`
 
@@ -94,6 +145,8 @@ tags = ["backend"]
 
 `find_root()` walks up from cwd to locate `gitm.toml`, so commands work from any subdirectory of the workspace.
 
+---
+
 ## AI backend
 
 At `init`, gitm probes PATH for `claude`, `opencode`, `codex` (via `--version`). If multiple are found it prompts you to pick one; `--ai <backend>` skips the prompt. Non-interactive (no TTY) falls back to the first detected. Override anytime with `--ai` or by editing `[ai].backend`.
@@ -108,6 +161,8 @@ Each backend is invoked non-interactively with the project dir as cwd so it can 
 
 AI is best-effort: on failure or `--no-ai`, a `| <name> | (pending) | |` placeholder row is written and can be filled later with `gitm ai --refresh <name>`.
 
+---
+
 ## Update
 
 gitm checks GitHub for a newer release on startup, throttled to once per 24h (cached at `~/.cache/gitm/last_check`). If a newer version exists it prints a one-line notice; the check is silent on network failure and never blocks.
@@ -117,11 +172,11 @@ gitm update --check    # show current vs latest
 gitm update            # download matching asset, extract, replace the running binary
 ```
 
-Repo is `reven404/gitm` by default; override at build time with `GITM_REPO_OWNER` / `GITM_REPO_NAME` env vars, or at runtime. Release assets are named `gitm-<arch>-<os>.tar.gz` (e.g. `gitm-aarch64-darwin.tar.gz`) and produced by `.github/workflows/release.yml` on `v*` tag push.
+Repo is `reven404/gitm` by default; override at build time with `GITM_REPO_OWNER` / `GITM_REPO_NAME` env vars. Release assets are named `gitm-<arch>-<os>.tar.gz` and produced by `.github/workflows/release.yml` on `v*` tag push. `--no-check` skips the startup check (CI / offline).
 
-`--no-check` skips the startup check (CI / offline).
+---
 
-## Status cell legend (`ls`)
+## `ls` status legend
 
 | Marker | Meaning |
 |---|---|
@@ -131,10 +186,26 @@ Repo is `reven404/gitm` by default; override at build time with `GITM_REPO_OWNER
 | `↓N` | N commits behind upstream |
 | `∅no-upstream` | no tracking branch |
 
+---
+
+## How it compares
+
+| | gitm | [meta](https://github.com/mateodelnorte/meta) | [mani](https://github.com/alajaji/mani) | [multi-gitter](https://github.com/lindell/multi-gitter) |
+|---|---|---|---|---|
+| Language | Rust | Node.js | Rust | Go |
+| Registry | TOML | `.meta` JSON | TOML/YAML | — |
+| Parallel exec | ✅ | ❌ (passthrough) | ✅ | ✅ |
+| Tags/groups | ✅ | ❌ | ✅ | — |
+| Auto `CLAUDE.md` via AI | ✅ | ❌ | ❌ | ❌ |
+| Self-update | ✅ | ❌ | ❌ | — |
+| Fleet PR lifecycle | ❌ | ❌ | ❌ | ✅ |
+
+gitm's differentiation is the **AI-maintained `CLAUDE.md`**; for fleet-level mass PRs across an org use multi-gitter.
+
 ## Scope (non-goals)
 
-- Fleet-level PR lifecycle (merge/close/status across an org) — that's [multi-gitter](https://github.com/lindell/multi-gitter).
-- Manifest version pinning (commit SHAs) — that's Google's `repo`.
+- Fleet-level PR lifecycle (merge/close/status across an org) — [multi-gitter](https://github.com/lindell/multi-gitter).
+- Manifest version pinning (commit SHAs) — Google's `repo`.
 - Recursive/nested workspaces, Windows support (`sh -c`), self-hosted Git API beyond `gh`/`glab`.
 
 ## License
