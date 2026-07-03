@@ -26,7 +26,7 @@ Global flags (BEFORE the subcommand): `--no-ai`, `--ai <claude|opencode|codex|no
 
 | Command | Args | What it does |
 |---|---|---|
-| `init` | `[DIR] [--ai <b>] [--no-scan]` | Create/adopt DIR, `git init`, write `CLAUDE.md`, detect AI backend, **scan DIR for existing git sub-repos and register them**. Refuses only if `gitm.toml` already exists. |
+| `init` | `[DIR] [--ai <b>] [--no-scan]` | Create/adopt DIR, write `CLAUDE.md`, detect AI backend, **scan DIR for existing git sub-repos and register them**. The workspace root is a plain directory, not a git repo (subprojects are independent clones/worktrees). Refuses only if `gitm.toml` already exists. |
 | `add` | `<SRC> [NAME] [--tag <T>]...` | SRC is a git URL (`http(s)://`,`git@`,`ssh://`,`git://`, or `*.git`) → `git clone`; else local path → `git worktree add --detach` then `checkout -B <branch>`. NAME defaults to URL tail / path basename. Writes toml + AI row. |
 | `ls` | `[--format table\|json] [--tag <T>]` | Per-project status: branch, dirty, ahead/behind upstream. `json` = structured array. |
 | `x` | `[-p NAME] [-t <T>] [-j N] [--fail-fast] [--dry-run] -- <CMD...>` | Run `<CMD>` across matched projects in parallel. Simple commands exec directly (no quotes); if any arg has shell control chars, runs via `sh -c`. `-p`/`-t` mutually exclusive. `-j 0` = num cpus. `--dry-run` prints `[name] $ CMD @ path` only. |

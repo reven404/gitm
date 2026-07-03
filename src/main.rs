@@ -118,7 +118,12 @@ fn cmd_init(dir: Option<PathBuf>, ai: Option<String>, no_scan: bool, cli: &Cli) 
             abs.display()
         ));
     }
-    gitops::git_inherit(&abs, &["init"])?;
+    // The workspace root is a plain directory, NOT a git repo: subprojects are
+    // independent clones/worktrees tracked by gitm.toml. Running `git init`
+    // here would make the root repo see every subproject as untracked content
+    // and, if the workspace lives inside a parent repo, create a nested repo
+    // that pollutes the parent's status. Users wanting to version-control the
+    // metadata (gitm.toml / CLAUDE.md / docs) can `git init` themselves.
     let claude = abs.join("CLAUDE.md");
     if !claude.exists() {
         std::fs::write(&claude, TEMPLATE_CLAUDE_MD)?;

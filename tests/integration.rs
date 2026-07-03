@@ -55,6 +55,11 @@ fn init_add_ls_x_rm_worktree() {
     let out = run(&["--no-ai", "init", &ws.to_string_lossy()], tmp.path());
     assert!(out.contains("Initialized gitm workspace"));
 
+    // the workspace root must NOT be a git repo — subprojects are independent
+    // clones/worktrees; a root .git would pollute status and nest inside any
+    // parent repo.
+    assert!(!ws.join(".git").exists(), "init must not git-init the workspace root");
+
     // add as worktree (local path)
     let out = run(
         &["--no-ai", "add", &src.to_string_lossy(), "--tag", "demo"],

@@ -103,7 +103,7 @@ The root `CLAUDE.md` gets a **Subproject Catalog** row per project, filled by th
 
 | Command | Description |
 |---|---|
-| `gitm init [DIR] [--ai <b>] [--no-scan]` | Init workspace, `git init`, write `CLAUDE.md`, detect AI backend, scan existing git sub-repos. |
+| `gitm init [DIR] [--ai <b>] [--no-scan]` | Init workspace, write `CLAUDE.md`, detect AI backend, scan existing git sub-repos. The workspace root is a plain directory, not a git repo — subprojects are independent clones/worktrees. |
 | `gitm add <SRC> [NAME] [--tag <T>]...` | `git clone` (URL) or `git worktree add` (local path); branch = workspace name; writes toml + AI row. |
 | `gitm ls [--format table\|json] [--tag <T>]` | Live status per project. |
 | `gitm x [-p NAME] [-t <T>] [-j N] [--fail-fast] [--dry-run] -- <CMD>` | Run a shell command across projects in parallel. `--` separates. |
