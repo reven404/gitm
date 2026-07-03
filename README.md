@@ -16,7 +16,21 @@
 
 ### Prebuilt binary (recommended)
 
-A one-liner that auto-detects your arch/OS and installs the latest release:
+A one-line installer auto-detects your arch/OS, downloads the latest release, and installs into `~/.local/bin` (no `sudo` needed):
+
+```bash
+curl -fsSL https://github.com/reven404/gitm/raw/main/install.sh | sh
+```
+
+Options:
+
+```bash
+curl -fsSL https://github.com/reven404/gitm/raw/main/install.sh | sh -s -- --bin /usr/local/bin   # install elsewhere (sudo yourself)
+curl -fsSL https://github.com/reven404/gitm/raw/main/install.sh | sh -s -- --version v0.1.3       # pin a release
+curl -fsSL https://github.com/reven404/gitm/raw/main/install.sh | sh -s -- --help                # full usage
+```
+
+The installer warns if `~/.local/bin` isn't on your `PATH` and prints the `export PATH=...` line to add to your shell rc. To install without the script (e.g. into `/usr/local/bin` with `sudo`):
 
 ```bash
 ARCH=$(uname -m | sed 's/arm64/aarch64/')        # aarch64 | x86_64
@@ -24,24 +38,6 @@ OS=$(uname -s | tr '[:upper:]' '[:lower:]')      # darwin  | linux
 curl -fsSL "https://github.com/reven404/gitm/releases/latest/download/gitm-${ARCH}-${OS}.tar.gz" \
   | sudo tar xz -C /usr/local/bin gitm
 gitm version
-```
-
-No `sudo` / no write access to `/usr/local/bin`? Install to a user dir:
-
-```bash
-mkdir -p ~/.local/bin
-curl -fsSL "https://github.com/reven404/gitm/releases/latest/download/gitm-${ARCH}-${OS}.tar.gz" \
-  | tar xz -C ~/.local/bin gitm
-export PATH="$HOME/.local/bin:$PATH"   # add to ~/.zshrc / ~/.bashrc to persist
-gitm version
-```
-
-Verify the download with the SHA-256 digest published on the [release page](https://github.com/reven404/gitm/releases/latest):
-
-```bash
-curl -fsSL "https://github.com/reven404/gitm/releases/latest/download/gitm-${ARCH}-${OS}.tar.gz" -o gitm.tgz
-shasum -a 256 gitm.tgz   # compare with the digest shown on the release page
-tar xzf gitm.tgz -C /usr/local/bin gitm
 ```
 
 Prebuilt assets (per release):
