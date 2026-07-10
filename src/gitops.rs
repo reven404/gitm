@@ -1,6 +1,30 @@
 use anyhow::{anyhow, Result};
 use std::path::Path;
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Global verbose flag (set once at startup from `cli.verbose`).
+/// When on, every git invocation logs `git -C <cwd> [args]` and captured
+/// stdout to stderr, so `gitm -v ...` exposes all git activity.
+static VERBOSE: AtomicBool = AtomicBool::new(false);
+
+pub fn set_verbose(v: bool) {
+    VERBOSE.store(v, Ordering::Relaxed);
+}
+
+fn trace(cwd: &Path, args: &[&str]) {
+    if VERBOSE.load(Ordering::Relaxed) {
+        eprintln!("git -C {} {:?}", cwd.display(), args);
+    }
+}
+
+fn trace_stdout(stdout: &str) {
+    if VERBOSE.load(Ordering::Relaxed) && !stdout.is_empty() {
+        for line in stdout.lines() {
+            eprintln!("  {}", line);
+        }
+    }
+}
 
 /// True if `s` looks like a remote git URL.
 pub fn is_git_url(s: &str) -> bool {
@@ -21,6 +45,7 @@ pub fn derive_name(source: &str) -> String {
 
 /// Run git, return stdout as a trimmed String. Errors on non-zero exit.
 pub fn git_out(cwd: &Path, args: &[&str]) -> Result<String> {
+    trace(cwd, args);
     let out = Command::new("git")
         .current_dir(cwd)
         .args(args)
@@ -33,7 +58,9 @@ pub fn git_out(cwd: &Path, args: &[&str]) -> Result<String> {
             String::from_utf8_lossy(&out.stderr).trim()
         ));
     }
-    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    trace_stdout(&s);
+    Ok(s)
 }
 
 /// Run git ignoring failure; returns stdout Option.
@@ -43,6 +70,7 @@ pub fn git_out_opt(cwd: &Path, args: &[&str]) -> Option<String> {
 
 /// `git -C <cwd> <args>` with inherited stdio, returning status.
 pub fn git_inherit(cwd: &Path, args: &[&str]) -> Result<std::process::ExitStatus> {
+    trace(cwd, args);
     let status = Command::new("git")
         .current_dir(cwd)
         .args(args)

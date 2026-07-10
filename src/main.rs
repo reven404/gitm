@@ -25,6 +25,7 @@ fn main() {
 }
 
 fn run(cli: Cli) -> Result<()> {
+    gitops::set_verbose(cli.verbose);
     // Auto version check (throttled 24h, silent on failure), unless disabled
     // or the user is already running `update`.
     let is_meta = matches!(
@@ -174,6 +175,7 @@ fn cmd_add(source: &str, name: Option<String>, tags: Vec<String>, cli: &Cli) -> 
     let branch = cfg.workspace.branch.clone();
     let kind;
     if gitops::is_git_url(source) {
+        eprintln!("cloning {} into {}", source, path);
         gitops::clone_into(&root, source, &path, &branch)?;
         kind = "cloned".to_string();
     } else {
@@ -181,6 +183,7 @@ fn cmd_add(source: &str, name: Option<String>, tags: Vec<String>, cli: &Cli) -> 
             .canonicalize()
             .map_err(|e| anyhow!("source path not found: {}: {}", source, e))?;
         gitops::git_out(&src, &["rev-parse", "--git-dir"])?;
+        eprintln!("adding worktree of {} at {}", src.display(), path);
         gitops::worktree_add(&src, &dest, &branch)?;
         kind = "worktree".to_string();
     }
@@ -195,7 +198,14 @@ fn cmd_add(source: &str, name: Option<String>, tags: Vec<String>, cli: &Cli) -> 
     cfg.upsert(p.clone());
     cfg.save(&root)?;
     let view = cfg_with_backend(cli, cfg.clone());
-    let _ = ai::analyze(&root, &view, &p, false);
+    // The git work is done; the AI analysis below can take a while (it spawns
+    // an external backend with piped stdio), so tell the user what's running.
+    if view.ai.backend == "none" {
+        let _ = ai::analyze(&root, &view, &p, false);
+    } else {
+        eprintln!("analyzing {} via {} ...", p.name, view.ai.backend);
+        let _ = ai::analyze(&root, &view, &p, false);
+    }
     println!("added project {}", name);
     Ok(())
 }
