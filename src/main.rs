@@ -1,5 +1,6 @@
 mod ai;
 mod cli;
+mod color;
 mod config;
 mod exec;
 mod gitops;
@@ -198,15 +199,26 @@ fn cmd_add(source: &str, name: Option<String>, tags: Vec<String>, cli: &Cli) -> 
     cfg.upsert(p.clone());
     cfg.save(&root)?;
     let view = cfg_with_backend(cli, cfg.clone());
+    // Stable color: the project's own slot in the catalog, so it matches
+    // `gitm ls` (unfiltered) for this project.
+    let idx = view
+        .project
+        .iter()
+        .position(|x| x.name == p.name)
+        .unwrap_or(0);
     // The git work is done; the AI analysis below can take a while (it spawns
     // an external backend with piped stdio), so tell the user what's running.
     if view.ai.backend == "none" {
         let _ = ai::analyze(&root, &view, &p, false);
     } else {
-        eprintln!("analyzing {} via {} ...", p.name, view.ai.backend);
+        eprintln!(
+            "analyzing {} via {} ...",
+            color::name_at(idx, &p.name),
+            view.ai.backend
+        );
         let _ = ai::analyze(&root, &view, &p, false);
     }
-    println!("added project {}", name);
+    println!("added project {}", color::name_at(idx, &name));
     Ok(())
 }
 
@@ -254,10 +266,11 @@ fn cmd_ls(format: &str, tag: &Option<String>, cli: &Cli) -> Result<()> {
         "NAME", "TYPE", "BRANCH", "STATUS", "PATH"
     );
     println!("{}", "-".repeat(90));
-    for (p, s) in projs.iter().zip(statuses.iter()) {
+    for (i, (p, s)) in projs.iter().zip(statuses.iter()).enumerate() {
         println!(
-            "{:<24} {:<10} {:<20} {:<16} {}",
-            p.name, p.kind, s.branch, s.cell(), p.path
+            "{} {:<10} {:<20} {:<16} {}",
+            color::name_at_padded(i, &p.name, 24),
+            p.kind, s.branch, s.cell(), p.path
         );
     }
     Ok(())
@@ -289,12 +302,12 @@ fn cmd_sync(jobs: usize, cli: &Cli) -> Result<()> {
     let pool = exec::pool_jobs(jobs)?;
     let fail = std::sync::atomic::AtomicBool::new(false);
     pool.install(|| {
-        cfg.project.par_iter().for_each(|p| {
+        cfg.project.par_iter().enumerate().for_each(|(i, p)| {
             let path = root.join(&p.path);
             match gitops::sync_one(&path) {
-                Ok(()) => println!("[{}] synced", p.name),
+                Ok(()) => println!("[{}] synced", color::name_at(i, &p.name)),
                 Err(e) => {
-                    eprintln!("[{}] sync: {}", p.name, e);
+                    eprintln!("[{}] sync: {}", color::name_at(i, &p.name), e);
                     fail.store(true, std::sync::atomic::Ordering::SeqCst);
                 }
             }
@@ -314,6 +327,12 @@ fn cmd_rm(name: &str, force: bool, cli: &Cli) -> Result<()> {
         .find(name)
         .cloned()
         .ok_or_else(|| anyhow!("project not found: {}", name))?;
+    // Stable color from the project's catalog slot (before removal).
+    let idx = cfg
+        .project
+        .iter()
+        .position(|x| x.name == name)
+        .unwrap_or(0);
     let dest = root.join(&p.path);
     match p.kind.as_str() {
         "worktree" => {
@@ -330,13 +349,16 @@ fn cmd_rm(name: &str, force: bool, cli: &Cli) -> Result<()> {
             } else {
                 println!(
                     "cloned project {} left on disk at {} (use --force to delete)",
-                    p.name,
+                    color::name_at(idx, &p.name),
                     dest.display()
                 );
             }
         }
         "local" => {
-            println!("local project {} unregistered (directory kept)", p.name);
+            println!(
+                "local project {} unregistered (directory kept)",
+                color::name_at(idx, &p.name)
+            );
         }
         _ => {}
     }
@@ -348,7 +370,7 @@ fn cmd_rm(name: &str, force: bool, cli: &Cli) -> Result<()> {
         let updated = ai::remove_catalog_row(&content, name);
         std::fs::write(&claude, updated)?;
     }
-    println!("removed project {}", name);
+    println!("removed project {}", color::name_at(idx, name));
     Ok(())
 }
 
@@ -371,9 +393,9 @@ fn cmd_ai(name: &Option<String>, refresh: bool, cli: &Cli) -> Result<()> {
         }
         None => view.project.iter().collect(),
     };
-    for p in targets {
+    for (i, p) in targets.into_iter().enumerate() {
         ai::analyze(&root, &view, p, refresh)?;
-        println!("analyzed {}", p.name);
+        println!("analyzed {}", color::name_at(i, &p.name));
     }
     Ok(())
 }

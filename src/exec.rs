@@ -1,4 +1,5 @@
 use crate::config::{Config, Project};
+use crate::color;
 use anyhow::{anyhow, Result};
 use rayon::prelude::*;
 use rayon::ThreadPool;
@@ -55,10 +56,10 @@ pub fn run(
     let use_shell = needs_shell(cmd);
 
     if dry_run {
-        for p in &targets {
+        for (i, p) in targets.iter().enumerate() {
             println!(
                 "[{}] $ {} @ {}",
-                p.name,
+                color::name_at(i, &p.name),
                 cmd_str,
                 root.join(&p.path).display()
             );
@@ -73,7 +74,8 @@ pub fn run(
     let results: Vec<i32> = pool.install(|| {
         targets
             .par_iter()
-            .map(|p| run_one(root, p, cmd, use_shell, fail_fast, &any_fail, &stdout_lock))
+            .enumerate()
+            .map(|(i, p)| run_one(root, p, i, cmd, use_shell, fail_fast, &any_fail, &stdout_lock))
             .collect()
     });
 
@@ -94,6 +96,7 @@ fn needs_shell(cmd: &[String]) -> bool {
 fn run_one(
     root: &std::path::Path,
     p: &Project,
+    index: usize,
     cmd: &[String],
     use_shell: bool,
     fail_fast: bool,
@@ -122,20 +125,21 @@ fn run_one(
         Ok(c) => c,
         Err(e) => {
             let mut o = stdout_lock.lock().unwrap();
-            let _ = writeln!(&mut *o, "[{}] spawn failed: {}", p.name, e);
+            let _ = writeln!(&mut *o, "[{}] spawn failed: {}", color::name_at(index, &p.name), e);
             any_fail.store(true, Ordering::SeqCst);
             return 127;
         }
     };
     let out = child.stdout.take().unwrap();
     let err = child.stderr.take().unwrap();
-    let name = p.name.clone();
+    // Color the name once; the same label prefixes every streamed line.
+    let label = color::name_at(index, &p.name);
     let lock1 = Arc::clone(stdout_lock);
     let lock2 = Arc::clone(stdout_lock);
-    let name1 = name.clone();
-    let name2 = name.clone();
-    let t1 = std::thread::spawn(move || stream_lines(out, &name1, &lock1));
-    let t2 = std::thread::spawn(move || stream_lines(err, &name2, &lock2));
+    let label1 = label.clone();
+    let label2 = label.clone();
+    let t1 = std::thread::spawn(move || stream_lines(out, &label1, &lock1));
+    let t2 = std::thread::spawn(move || stream_lines(err, &label2, &lock2));
     let status = child.wait().ok();
     let _ = t1.join();
     let _ = t2.join();
@@ -145,7 +149,6 @@ fn run_one(
     if code != 0 {
         any_fail.store(true, Ordering::SeqCst);
     }
-    let _ = name;
     code
 }
 
